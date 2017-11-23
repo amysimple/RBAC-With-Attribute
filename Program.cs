@@ -1,95 +1,105 @@
 using System;
-using System.Threading;
+
+using System.Runtime.Remoting.Proxies;
+using System.Runtime.Remoting.Messaging;
+
 
 namespace ConsoleApplication1
 {
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            
-            var op = new Operation();
-            //op.WriteThreadInfo();
-            op.Call("WriteThreadInfo");
-            op.Write1();
-            op.WriteOne();
-            op.Write2();
-            op.WriteThreadInfo();
+	public class Program
+	{
+		public static void Main(string[] args)
+		{
+			  
+			var op = OperationProxy.Create<Operation>();
+			op.WriteInfo();
+			op.Free();
+		}
+	}
 
+	public interface IOperation
+	{
+		void WriteInfo();
+	}
 
-           
- 
+	public class Operation : MarshalByRefObject, IOperation
+	{
+		[Permisson]
+		public void WriteInfo()
+		{
+			Console.WriteLine(Guid.NewGuid().ToString());
+		}
+		public void Free()
+		{
+			Console.WriteLine("im good\n");
+		}
+	}
 
+	public abstract class OperationProxy
+	{
+		public static T Create<T>()
+		{
+			T instance = Activator.CreateInstance<T>();
+			OperationRealProxy<T> realProxy = new OperationRealProxy<T>(instance);
+			T transparentProxy = (T)realProxy.GetTransparentProxy();
+			return transparentProxy;
+		}
+	}
 
-            Console.ReadKey();
+	public class OperationRealProxy<T> : RealProxy
+	{
+		private T _target;
+		public OperationRealProxy(T target): base (typeof (T))
+		{
+			this._target = target;
+		}
 
-        }
- 
-    }
-    
-    public class Operation : PermissonAutoCheck
-    {
-        
+		public override IMessage Invoke(IMessage msg)
+		{
+			IMethodCallMessage callmessage = (IMethodCallMessage)msg;
+			object returnValue = null;
+			ReturnMessage message;
+			if (OnInvoke(callmessage))
+			{
+				OnEntry(callmessage);
+				returnValue = callmessage.MethodBase.Invoke(this._target, callmessage.Args);
+				message = new ReturnMessage(returnValue, new object[0], 0, null, callmessage);
+				OnExit(message);
+			}
+			else
+				message = new ReturnMessage(returnValue, new object[0], 0, null, callmessage);
+			return message;
+		}
 
-        [Permisson]
-        public void Write1()
-        {
-            Console.WriteLine("使用了Write1方法");
-        }
-        [Permisson]
-        public void WriteOne()
-        {
-            Console.WriteLine("使用了WriteOne方法");
-        }
-        
-        public void Write2()
-        {
-            Console.WriteLine("本类="+this.GetType().ToString());//当类名用
+		public bool OnInvoke(IMethodCallMessage msg)
+		{
+			Console.WriteLine( "OnInvoke\n" );
+			
+			bool _continue = _target.GetType().GetMethod(msg.MethodName.ToString()).IsDefined(typeof (PermissonAttribute), false);
+			if (_continue)
+			{
+				Console.WriteLine("没有通过权限检查\n");
+				return false;
+			}
 
-            Console.WriteLine("被这个类调用=" + new System.Diagnostics.StackTrace(true).GetFrame(1).GetMethod().DeclaringType.ToString());
+			return true;
+		}
 
-            Console.WriteLine("被这个方法调用=" + new System.Diagnostics.StackTrace(true).GetFrame(1).GetMethod().Name);
+		public void OnEntry(IMethodCallMessage msg)
+		{
+			Console.WriteLine("OnEntry\n");
+		}
 
-            Console.WriteLine("本方法=" + System.Reflection.MethodBase.GetCurrentMethod().Name);
-        }
-        [Permisson]
-        public void WriteThreadInfo()
-        {
-            Console.WriteLine(Thread.CurrentThread.GetHashCode().ToString());
-        }
-    }
+		public void OnExit(ReturnMessage msg)
+		{
+			Console.WriteLine("OnExit\n");
+		}
+	}
 
-    public abstract class PermissonAutoCheck {
-        public void Call(string method, object[] parameters)
-        {
-            object target = this;
-
-            System.Reflection.MethodInfo refMethod = target.GetType().GetMethod(method);
-
-            //不存在的方法
-            if (refMethod == null)
-            {
-                throw new Exception(string.Format("“{0}”未包含“{1}”的定义，并且找不到可接受第一个“{0}”类型参数的扩展方法“{1}”(是否缺少 using 指令或程序集引用 ?)", new object[] { target.GetType(), method }));
-            }
-
-            //类指定 | 方法指定 
-            if (target.GetType().IsDefined(typeof(PermissonAttribute), false) | refMethod.IsDefined(typeof(PermissonAttribute), false))
-            {
-                //比对用户权限
-                if (true) { refMethod.Invoke(target, parameters); }
-                else { Console.WriteLine("权限失败，终止"); }
-            }
-        }
-        public void Call(string method)
-        {
-            Call(method, null);
-        }
-    }
-
-
-    internal class PermissonAttribute : Attribute
-    {
-        public PermissonAttribute() { }
-       
-    }
+	public class PermissonAttribute : Attribute
+	{
+		public PermissonAttribute()
+		{
+		}
+	}
 }
