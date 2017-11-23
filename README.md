@@ -14,7 +14,7 @@ Usage用法
 <br>OnExit
 <hr>
 <li>调用，织入 
-<br>var op = OperationProxy.Create<Operation>();
+<br>var op = OperationProxy.Create&lt;Operation>();
 <br>op.WriteInfo();
 <br>op.Free();
 <hr>
